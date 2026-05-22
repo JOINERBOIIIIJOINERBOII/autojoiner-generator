@@ -1,3 +1,7 @@
 {
-    "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+    "functions": {
+        "api/generate.js": {
+            "runtime": "nodejs18.x"
+        }
+    }
 }
